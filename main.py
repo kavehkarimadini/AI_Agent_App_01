@@ -4,7 +4,7 @@ from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.agents import create_tool_calling_agent, AgentExecutor
-from tools import search_tool
+from tools import search_tool, wiki_tool, save_tool
 # Load environment variables
 load_dotenv()
 
@@ -14,7 +14,7 @@ class ResearchPaper(BaseModel):
     sources: list[str]
     tools_used: list[str]
 llm = HuggingFaceEndpoint(
-    repo_id="HuggingFaceH4/zephyr-7b-beta",
+    repo_id="mistralai/Mistral-7B-Instruct-v0.2",
     task="text-generation",
     max_new_tokens=512,
     do_sample=False,
@@ -34,23 +34,24 @@ prompt = ChatPromptTemplate.from_messages(
             """,
         ),
         ("placeholder", "{chat_history}"),
-        ("human", "{query}"),
+        ("human", "{role}{query}"),
         ("placeholder", "{agent_scratchpad}"),
     ]
 ).partial(format_instructions=parser.get_format_instructions())
-tools = [search_tool]
+tools = [search_tool,wiki_tool,save_tool]
 # Create the agent with the tools and prompt
 agent = create_tool_calling_agent(
     llm=chat_model,
     tools=tools,
     prompt=prompt
 )
-agent_executor = AgentExecutor(agent=agent, tools=[], verbose=True)
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True,handle_parsing_errors=True)
+# Run the agent with a user query
 user_input = input("what do you want to research about: ")
 # Query the LLM
-raw_response = agent_executor.invoke({"query": user_input})
+raw_response = agent_executor.invoke({"role":"researcher","query": user_input})
 try:
     structured_response = parser.parse(raw_response.get("output"))
-    print(structured_response.topic)
+    print(structured_response)
 except Exception as e:
     print("Error parsing response", e, "Raw Response - ", raw_response)
